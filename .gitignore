@@ -3,6 +3,7 @@
 /.env
 
 /storage/*.key
+/storage/app/
 /storage/logs/*
 /storage/framework/*
 /storage/debugbar/*
