@@ -41,3 +41,6 @@ const CONST_PMSSETTING_SECONDPMSENDDATE = "Y-07-31"; // End date for the second 
 // PMS goal cycle start months: H1 opens in July (7), H2 opens in January (1)
 const PMS_H1_START_MONTH = 5;
 const PMS_H2_START_MONTH = 1;
+
+const CONST_PMSSETTING_SENDMAIL = true; // Flag to enable or disable sending emails for PMS submissions
+const CONST_PMSSETTING_SENDSMS = true; // Flag to enable or disable sending SMS for PMS submissions

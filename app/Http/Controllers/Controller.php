@@ -224,6 +224,8 @@ class Controller extends BaseController
 
     public function sendMail($recipientAddress, $mailBody, $subject, $ccAddresses = null, $bccAddresses = null, $attachment = null)
     {
+        if (!CONST_PMSSETTING_SENDMAIL) return;
+
         $env = (config('app.env'));
         Mail::send('emails.email',['mailBody'=>$mailBody],function($mail) use ($recipientAddress,$ccAddresses,$subject,$bccAddresses,$env,$attachment) {
         // Mail::queue('emails.email', ['mailBody' => $mailBody], function ($mail) use ($recipientAddress, $ccAddresses, $subject, $bccAddresses, $env, $attachment) {
@@ -298,6 +300,8 @@ class Controller extends BaseController
     
     public function sendMailAlternate($recipientAddress, $mailBody, $subject, $ccAddresses = null, $bccAddresses = null)
     {
+        if (!CONST_PMSSETTING_SENDMAIL) return;
+
         $env = (config('app.env'));
         // Mail::queue
         Mail::send('emails.emailalternate', ['mailBody' => $mailBody], function ($mail) use ($recipientAddress, $ccAddresses, $subject, $bccAddresses, $env) {
@@ -411,6 +415,8 @@ class Controller extends BaseController
 
     function sendSMS($mobile, $message)
     {
+        if (!CONST_PMSSETTING_SENDSMS) return true;
+
         $env = (config('app.env'));
 
         if ($env == 'local') {
@@ -514,6 +520,8 @@ class Controller extends BaseController
 
     function sendSMSTashiCell($mobile, $message)
     {
+        if (!CONST_PMSSETTING_SENDSMS) return true;
+
         $env = (config('app.env'));
 
         if ($env == 'local') {
