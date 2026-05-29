@@ -484,6 +484,7 @@ class PMSController extends Controller
         $hasMultipleLevel2 = false;
         $multipleDetailArray = [];
         $loggedInLevel = false;
+        $result = null;
 
         $today = strtotime(date('Y-m-d'));
         $currentPMSQuery = DB::table('sys_pmsnumber')->where('StartDate', '<=', date('Y-m-d'))->orderBy('StartDate', 'DESC')->pluck('Id');
@@ -544,10 +545,15 @@ class PMSController extends Controller
                             'pms_employeetargetmultipleappraiser as d',
                             'c.Id','=','d.TargetId'
                         )
+                        ->join(
+                            'pms_employeegoal_l1submission as e',
+                            'b.EmployeeGoalId','=','e.EmployeeGoalId'
+                        )
                         ->selectRaw('
                             b.EmployeeGoalId,
                             SUM(d.Level1Score) as Level1Rating
                         ')
+                        ->whereNotNull('e.SubmittedAt')
                         ->groupBy('b.EmployeeGoalId')
                         ->first();
 
@@ -558,10 +564,15 @@ class PMSController extends Controller
                             'pms_employeegoaltargetdetail as c',
                             'b.Id', '=', 'c.GoalDetailId'
                         )
+                        ->join(
+                            'pms_employeegoal_l1submission as e',
+                            'b.EmployeeGoalId','=','e.EmployeeGoalId'
+                        )
                         ->selectRaw('
                             b.EmployeeGoalId,
                             SUM(c.Level1Score) as Level1Rating
                         ')
+                        ->whereNotNull('e.SubmittedAt')
                         ->groupBy('b.EmployeeGoalId')
                         ->first();
                 }
@@ -608,7 +619,7 @@ class PMSController extends Controller
                 ->where('T1.EmployeeId', $employeeId)
                 ->sum("T2.Level1Score");
             if (!(bool) $goalAchievementScore) {
-                $goalAchievementScore = $result->Level1Rating;
+                $goalAchievementScore = $result?->Level1Rating ?? 0;
             }
 
             if ((bool) $goalAchievementScore && count($pmsDetails) > 0) {

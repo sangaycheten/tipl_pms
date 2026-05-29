@@ -40,6 +40,7 @@ class CommonGoalController extends Controller
                 ->get(['Id', 'Description', 'Weightage', 'InH1', 'InH2', 'DisplayOrder']);
 
             $goal->goalCount = $goal->goalDetails->count();
+            $goal->isLocked  = $this->isLockedByActivity((int) $goal->Id, (int) $goal->Year);
         }
 
         return view('commongoals.index', compact('goals', 'selectedYear'));
@@ -190,7 +191,7 @@ class CommonGoalController extends Controller
 
         $publishConfirmMsg = $commonGoal->Status === 'published'
             ? 'Re-push goals to all assigned employees? This will overwrite any previously published copies.'
-            : 'Publish these common goals to all assigned employees?';
+            : 'Publish these common goals to all assigned employees? Their supervisors will receive them to set individual weightages.';
 
         return view('commongoals.show', compact('commonGoal', 'goalDetails', 'assignedEmployees', 'isLocked', 'publishConfirmMsg'));
     }
@@ -374,20 +375,21 @@ class CommonGoalController extends Controller
 
                     $goalDetailId = UUID();
                     PMSEmployeeGoalDetail::create([
-                        'Id'             => $goalDetailId,
-                        'EmployeeGoalId' => $masterId,
-                        'Type'           => 2,
-                        'GoalType'       => self::GOAL_TYPE,
-                        'CommonGoalId'   => $commonGoal->Id,
-                        'DisplayOrder'   => $tpl->DisplayOrder,
-                        'Description'    => $tpl->Description,
-                        'Weightage'      => $tpl->Weightage,
-                        'Target'         => $tpl->Target,
-                        'InH1'           => $tpl->InH1,
-                        'InH2'           => $tpl->InH2,
-                        'Year'           => $year,
-                        'CreatedBy'      => Auth::id(),
-                        'created_at'     => $now,
+                        'Id'                  => $goalDetailId,
+                        'EmployeeGoalId'      => $masterId,
+                        'Type'                => 2,
+                        'GoalType'            => self::GOAL_TYPE,
+                        'CommonGoalId'        => $commonGoal->Id,
+                        'DisplayOrder'        => $tpl->DisplayOrder,
+                        'Description'         => $tpl->Description,
+                        'Weightage'           => $tpl->Weightage,
+                        'Target'              => $tpl->Target,
+                        'InH1'                => $tpl->InH1,
+                        'InH2'                => $tpl->InH2,
+                        'IsReadyForEmployee'  => 0, // supervisor must set weightages before employee can see this
+                        'Year'                => $year,
+                        'CreatedBy'           => Auth::id(),
+                        'created_at'          => $now,
                     ]);
 
                     foreach ($tpl->targets as $tgt) {
@@ -422,6 +424,99 @@ class CommonGoalController extends Controller
     {
         $selectedYear = (int) $request->input('year', date('Y'));
         return view('commongoals.import', compact('selectedYear'));
+    }
+
+    public function importProcess(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt',
+            'year' => 'nullable|integer|min:2000|max:2100',
+        ]);
+
+        $selectedYear = (int) $request->input('year', date('Y'));
+
+        $handle = fopen($request->file('file')->getPathname(), 'r');
+        $rows   = [];
+        while (($row = fgetcsv($handle)) !== false) {
+            $rows[] = $row;
+        }
+        fclose($handle);
+
+        if (empty($rows)) {
+            return back()->withErrors(['file' => 'The uploaded file is empty.']);
+        }
+
+        array_shift($rows); // remove header row
+
+        $goals     = [];
+        $goalIndex = 0;
+        $lastKey   = null;
+        $skipKey   = null;
+
+        foreach ($rows as $row) {
+            $taskDesc = trim($row[5] ?? '');
+            if ($taskDesc === '') continue;
+
+            $goalDesc = trim($row[0] ?? '');
+
+            if ($goalDesc !== '') {
+                $goalIndex++;
+                $lastKey = $goalIndex;
+                $skipKey = null;
+
+                $rowYear = (int) trim($row[2] ?? $selectedYear);
+                if ($rowYear !== $selectedYear) {
+                    $skipKey = $lastKey;
+                    continue;
+                }
+
+                $h1 = strtolower(trim($row[3] ?? ''));
+                $h2 = strtolower(trim($row[4] ?? ''));
+
+                $entry = [
+                    'goal_number' => $goalIndex,
+                    'description' => $goalDesc,
+                    'total_score' => (float) ($row[1] ?? 0),
+                    'year'        => $rowYear,
+                    'tasks'       => [],
+                ];
+                if (in_array($h1, ['y', 'yes', '1'])) $entry['in_h1'] = 1;
+                if (in_array($h2, ['y', 'yes', '1'])) $entry['in_h2'] = 1;
+
+                $goals[$lastKey] = $entry;
+            }
+
+            if ($lastKey === null || $skipKey === $lastKey || !isset($goals[$lastKey])) continue;
+
+            $goals[$lastKey]['tasks'][] = [
+                'description' => $taskDesc,
+                'weightage'   => (float) ($row[6] ?? 0),
+                'target'      => trim($row[7] ?? '') ?: '-',
+            ];
+        }
+
+        if (empty($goals)) {
+            return back()->withErrors(['file' => 'No valid goal rows found. Ensure the Year column matches ' . $selectedYear . '.']);
+        }
+
+        $now        = date('Y-m-d H:i:s');
+        $goalsArray = array_values($goals);
+
+        DB::transaction(function () use ($selectedYear, $goalsArray, $now) {
+            $master = CommonGoal::create([
+                'Year'       => $selectedYear,
+                'Title'      => 'Common Goals ' . $selectedYear,
+                'Status'     => 'draft',
+                'CreatedBy'  => Auth::id(),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            $this->saveGoalDetails($master->Id, $goalsArray, $selectedYear, $now);
+        });
+
+        return redirect()->route('commongoal.index', ['year' => $selectedYear])
+                         ->with('successmessage', 'Common goals imported successfully as draft. You can now assign employees and publish.');
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -508,20 +603,21 @@ class CommonGoalController extends Controller
 
                 $goalDetailId = UUID();
                 PMSEmployeeGoalDetail::create([
-                    'Id'             => $goalDetailId,
-                    'EmployeeGoalId' => $masterId,
-                    'Type'           => 2,
-                    'GoalType'       => self::GOAL_TYPE,
-                    'CommonGoalId'   => $commonGoalId,
-                    'DisplayOrder'   => $goalNumber * 1000,
-                    'Description'    => trim($g['description']),
-                    'Weightage'      => 0,
-                    'Target'         => $targetLabel,
-                    'InH1'           => $inH1,
-                    'InH2'           => $inH2,
-                    'Year'           => $year,
-                    'CreatedBy'      => Auth::id(),
-                    'created_at'     => $now,
+                    'Id'                  => $goalDetailId,
+                    'EmployeeGoalId'      => $masterId,
+                    'Type'                => 2,
+                    'GoalType'            => self::GOAL_TYPE,
+                    'CommonGoalId'        => $commonGoalId,
+                    'DisplayOrder'        => $goalNumber * 1000,
+                    'Description'         => trim($g['description']),
+                    'Weightage'           => 0,
+                    'Target'              => $targetLabel,
+                    'InH1'                => $inH1,
+                    'InH2'                => $inH2,
+                    'IsReadyForEmployee'  => 0, // supervisor must set weightages before employee can see this
+                    'Year'                => $year,
+                    'CreatedBy'           => Auth::id(),
+                    'created_at'          => $now,
                 ]);
 
                 foreach ($g['tasks'] ?? [] as $task) {
@@ -646,33 +742,44 @@ class CommonGoalController extends Controller
     /**
      * Returns true if any assigned employee has started their self-rating
      * (saved a draft score or formally submitted a cycle).
-     * Once this is true the common goal set becomes immutable.
+     * Once this is true the common goal set's structure (descriptions/tasks/targets) becomes immutable.
+     * Weightages are set by each employee's L1 appraiser via the regular goal edit flow.
      */
-    private function isLockedByActivity(int $commonGoalId): bool
+    private function isLockedByActivity(int $commonGoalId, int $year = 0): bool
     {
+        if (!$year) {
+            $year = (int) DB::table('pms_common_goals')->where('Id', $commonGoalId)->value('Year');
+        }
+
         $empIds = DB::table('pms_common_goal_assignments')
             ->where('CommonGoalId', $commonGoalId)
             ->pluck('EmployeeId');
 
         if ($empIds->isEmpty()) return false;
 
-        // Case 1: any assigned employee has formally submitted a cycle (H1Status=1 or H2Status=1)
+        // Only consider pms_employeegoal rows that belong to the common goal's own year.
+        // Past PMS cycles from previous years must not lock the current goal set.
+        $yearMasterIds = DB::table('pms_employeegoal as eg')
+            ->join('sys_pmsnumber as pn', 'pn.Id', '=', 'eg.SysPmsNumberId')
+            ->whereIn('eg.EmployeeId', $empIds)
+            ->whereYear('pn.StartDate', $year)
+            ->pluck('eg.Id');
+
+        if ($yearMasterIds->isEmpty()) return false;
+
+        // Case 1: any assigned employee has formally submitted a cycle in the goal year
         $hasSubmitted = DB::table('pms_employeegoal')
-            ->whereIn('EmployeeId', $empIds)
+            ->whereIn('Id', $yearMasterIds)
             ->where(function ($q) { $q->where('H1Status', 1)->orWhere('H2Status', 1); })
             ->exists();
 
         if ($hasSubmitted) return true;
 
-        // Case 2: any assigned employee has saved a self-rating draft (SelfScore entered)
-        $masterIds = DB::table('pms_employeegoal')
-            ->whereIn('EmployeeId', $empIds)
-            ->pluck('Id');
-
-        if ($masterIds->isEmpty()) return false;
-
-        return PMSEmployeeGoalDetail::whereIn('EmployeeGoalId', $masterIds)
+        // Case 2: any assigned employee has saved a self-rating draft this year
+        return PMSEmployeeGoalDetail::whereIn('EmployeeGoalId', $yearMasterIds)
+            ->where('Year', $year)
             ->whereNotNull('SelfScore')
             ->exists();
     }
+
 }

@@ -10,13 +10,13 @@
     $pct              = $goal->Weightage > 0
                             ? min(100, ($taskWeightageSum / $goal->Weightage) * 100)
                             : 0;
-
-
+    $isCommon  = (int)($goal->GoalType ?? 0) === 2;
+    $goalLabel = $isCommon ? chr(64 + $goalNumber) : $goalNumber;
 @endphp
 
 <div class="goal-card {{ $isSubmitted ? 'view-only' : '' }}">
     <div class="goal-meta">
-        <span class="goal-number">#{{ $goalNumber }}</span>
+        <span class="goal-number">#{{ $goalLabel }}</span>
         <span class="badge-half">{{ $halfYearLabel }}</span>
         <span class="badge-year">{{ $goal->Year }}</span>
         @if((int)$goal->GoalType === 2)
@@ -71,7 +71,9 @@
                             }
                         @endphp
                         <tr>
-                            <td class="text-center text-muted">{{ $loop->iteration }}</td>
+                            <td class="text-center text-muted">
+                                {{ $isCommon ? ($goalLabel . $loop->iteration) : ($goalNumber . '.' . $loop->iteration) }}
+                            </td>
                             <td>{{ $task->Description }}</td>
                             <td class="text-right">{{ number_format($task->Weightage, 2) }}</td>
                             <td>
@@ -84,8 +86,18 @@
                             @if($isSubmitted)
                                 <td>
                                     @if($task->Achievement)
-                                        <span style="background:#fff8e1;color:#f57f17;padding:2px 7px;border-radius:4px;font-size:0.78rem;font-weight:600;">
-                                            {{ $task->Achievement }}
+                                        @php
+                                            $ach = $task->Achievement;
+                                            $achStyle = match(true) {
+                                                $ach === 'Achieved'          => 'background:#e8f5e9;color:#2e7d32;',
+                                                $ach === 'Partially Achieved'=> 'background:#fff8e1;color:#f57f17;',
+                                                $ach === 'Ongoing'           => 'background:#e3f2fd;color:#1565c0;',
+                                                $ach === 'Not Achieved'      => 'background:#fdecea;color:#c62828;',
+                                                default                      => 'background:#f5f5f5;color:#555;',
+                                            };
+                                        @endphp
+                                        <span style="{{ $achStyle }}padding:2px 7px;border-radius:4px;font-size:0.78rem;font-weight:600;">
+                                            {{ $ach }}
                                         </span>
                                     @else
                                         <span class="text-muted">—</span>

@@ -76,8 +76,8 @@
 
 @section('pagescripts')
 <script>
-const H1_TARGETS = ['Q1','Q1M1','Q1M2','Q1M3','Q2','Q2M1','Q2M2','Q2M3'];
-const H2_TARGETS = ['Q3','Q3M1','Q3M2','Q3M3','Q4','Q4M1','Q4M2','Q4M3'];
+const H1_TARGETS = ['Q1M1','Q1M2','Q1M3','Q2M1','Q2M2','Q2M3'];
+const H2_TARGETS = ['Q3M1','Q3M2','Q3M3','Q4M1','Q4M2','Q4M3'];
 
 let goalIndex  = 0;
 let nextGoalNum = {{ $nextGoalNumber }};

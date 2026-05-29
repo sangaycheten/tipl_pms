@@ -141,84 +141,101 @@
 @endphp
 
 <div class="goal-toolbar">
-    {{-- Action buttons + year filter --}}
     @php
-        $h1Submitted  = ($h1Status ?? 0) == 1;
-        $h2Submitted  = ($h2Status ?? 0) == 1;
+        $h1Submitted   = ($h1Status ?? 0) == 1;
+        $h2Submitted   = ($h2Status ?? 0) == 1;
         $bothSubmitted = $h1Submitted && $h2Submitted;
+        $goalsExist    = isset($goalDetails) && $goalDetails->isNotEmpty();
+        $l1H1Sub       = $l1H1Submission ?? null;
+        $l1H2Sub       = $l1H2Submission ?? null;
     @endphp
+
+    {{-- ROW 1: Action buttons + year filter --}}
     <div class="d-flex align-items-center justify-content-between flex-wrap" style="gap:8px;">
-        <div class="d-flex align-items-center flex-wrap">
+        <div class="d-flex align-items-center flex-wrap" style="gap:6px;">
             @if(!$h1Submitted && !$h2Submitted)
-                <a href="{{ route('goals.create', ['employeeId' => $EmployeeId]) }}" class="btn btn-primary btn-sm mr-2">
-                    <i class="fa fa-plus"></i> Add New Goal
-                </a>
-                <a href="{{ route('goals.import', ['employeeId' => $EmployeeId]) }}" class="btn btn-default btn-sm mr-2">
-                    <i class="fa fa-upload"></i> Import Template
-                </a>
+                @if($goalsExist)
+                    <a href="{{ route('goals.create', ['employeeId' => $EmployeeId]) }}" class="btn btn-warning btn-sm"
+                       title="Clear existing goals and start over">
+                        <i class="fa fa-refresh"></i> Reset Goals
+                    </a>
+                    <a href="{{ route('goals.import', ['employeeId' => $EmployeeId]) }}" class="btn btn-default btn-sm"
+                       title="Replace existing goals by importing a template">
+                        <i class="fa fa-upload"></i> Re-import Template
+                    </a>
+                @else
+                    <a href="{{ route('goals.create', ['employeeId' => $EmployeeId]) }}" class="btn btn-primary btn-sm">
+                        <i class="fa fa-plus"></i> Add New Goal
+                    </a>
+                    <a href="{{ route('goals.import', ['employeeId' => $EmployeeId]) }}" class="btn btn-default btn-sm">
+                        <i class="fa fa-upload"></i> Import Template
+                    </a>
+                @endif
             @elseif($h1Submitted || $h2Submitted)
-                <button type="button" class="btn btn-primary btn-sm mr-2" disabled title="Goals cannot be added after self-rating is submitted">
+                <button type="button" class="btn btn-primary btn-sm" disabled
+                        title="Goals cannot be modified after self-rating is submitted">
                     <i class="fa fa-plus"></i> Add New Goal
-                </button>
-                <button type="button" class="btn btn-default btn-sm mr-2" disabled title="Goals cannot be imported after self-rating is submitted">
-                    <i class="fa fa-upload"></i> Import Template
                 </button>
             @endif
+
             @if(!empty($goalId))
-                <a href="{{ route('goals.show', $goalId) }}" class="btn btn-info btn-sm mr-1">
+                <a href="{{ route('goals.show', $goalId) }}" class="btn btn-info btn-sm">
                     <i class="fa fa-eye"></i> View
                 </a>
             @endif
+
             @if(!empty($supervisorGoalId ?? null) && !$bothSubmitted)
-                <a href="{{ route('goals.edit', $supervisorGoalId) }}" class="btn btn-default btn-sm mr-1">
+                <a href="{{ route('goals.edit', $supervisorGoalId) }}" class="btn btn-default btn-sm">
                     <i class="fa fa-pencil"></i> Edit
                 </a>
                 <form method="POST" action="{{ route('goals.submit', $supervisorGoalId) }}" style="display:inline;">
                     @csrf
-                    <button type="submit" class="btn btn-success btn-sm">
-                        <i class="fa fa-paper-plane"></i> Submit
-                    </button>
+                    @if($isGoalPublished ?? false)
+                        <button type="submit" class="btn btn-info btn-sm">
+                            <i class="fa fa-refresh"></i> Re-publish
+                        </button>
+                    @else
+                        <button type="submit" class="btn btn-success btn-sm">
+                            <i class="fa fa-check"></i> Publish
+                        </button>
+                    @endif
                 </form>
             @endif
-            @if(!empty($goalId))
-                @if($h1Submitted)
-                    <span class="badge badge-success ml-2" style="font-size:0.82rem;padding:5px 10px;">
-                        <i class="fa fa-check-circle mr-1"></i> H1 Submitted
-                    </span>
-                @endif
-                @if($h2Submitted)
-                    <span class="badge badge-success ml-2" style="font-size:0.82rem;padding:5px 10px;">
-                        <i class="fa fa-check-circle mr-1"></i> H2 Submitted
-                    </span>
-                @endif
-            @endif
 
-            {{-- L1 Appraise buttons — shown only to the Level 1 appraiser after employee submits --}}
+            {{-- L1 appraise action buttons --}}
             @if($isL1Appraiser ?? false)
                 @if($h1Submitted)
-                    @php $l1H1Sub = $l1H1Submission ?? null; @endphp
                     @if($l1H1Sub && !is_null($l1H1Sub->SubmittedAt))
                         <a href="{{ route('goals.appraise.show', [$EmployeeId, 'h1']) }}"
-                           class="btn btn-sm btn-outline-success ml-2">
+                           class="btn btn-sm btn-outline-success">
                             <i class="fa fa-check-circle mr-1"></i> H1 Appraised
+                        </a>
+                    @elseif($l1H1Sub)
+                        <a href="{{ route('goals.appraise.show', [$EmployeeId, 'h1']) }}"
+                           class="btn btn-sm btn-warning" style="color:#333;">
+                            <i class="fa fa-star mr-1"></i> Continue H1
                         </a>
                     @else
                         <a href="{{ route('goals.appraise.show', [$EmployeeId, 'h1']) }}"
-                           class="btn btn-sm btn-warning ml-2" style="color:#333;">
+                           class="btn btn-sm btn-warning" style="color:#333;">
                             <i class="fa fa-star mr-1"></i> Appraise H1
                         </a>
                     @endif
                 @endif
                 @if($h2Submitted)
-                    @php $l1H2Sub = $l1H2Submission ?? null; @endphp
                     @if($l1H2Sub && !is_null($l1H2Sub->SubmittedAt))
                         <a href="{{ route('goals.appraise.show', [$EmployeeId, 'h2']) }}"
-                           class="btn btn-sm btn-outline-success ml-2">
+                           class="btn btn-sm btn-outline-success">
                             <i class="fa fa-check-circle mr-1"></i> H2 Appraised
+                        </a>
+                    @elseif($l1H2Sub)
+                        <a href="{{ route('goals.appraise.show', [$EmployeeId, 'h2']) }}"
+                           class="btn btn-sm btn-warning" style="color:#333;">
+                            <i class="fa fa-star mr-1"></i> Continue H2
                         </a>
                     @else
                         <a href="{{ route('goals.appraise.show', [$EmployeeId, 'h2']) }}"
-                           class="btn btn-sm btn-warning ml-2" style="color:#333;">
+                           class="btn btn-sm btn-warning" style="color:#333;">
                             <i class="fa fa-star mr-1"></i> Appraise H2
                         </a>
                     @endif
@@ -234,6 +251,66 @@
             </select>
         </form>
     </div>
+
+    {{-- ROW 2: Status badges --}}
+    @if(!empty($goalId))
+    <div class="d-flex align-items-center flex-wrap" style="margin-top:8px; gap:6px;">
+        <small class="text-muted mr-1" style="font-size:0.78rem;">Self-rating:</small>
+        @if($h1Submitted)
+            <span class="badge badge-success" style="font-size:0.78rem;padding:4px 10px;">
+                <i class="fa fa-check-circle mr-1"></i> H1 Submitted
+            </span>
+        @elseif($h1Goals->isNotEmpty())
+            <span class="badge badge-secondary" style="font-size:0.78rem;padding:4px 10px;">
+                <i class="fa fa-clock-o mr-1"></i> H1 Pending
+            </span>
+        @endif
+        @if($h2Submitted)
+            <span class="badge badge-success" style="font-size:0.78rem;padding:4px 10px;">
+                <i class="fa fa-check-circle mr-1"></i> H2 Submitted
+            </span>
+        @elseif($h2Goals->isNotEmpty())
+            <span class="badge badge-secondary" style="font-size:0.78rem;padding:4px 10px;">
+                <i class="fa fa-clock-o mr-1"></i> H2 Pending
+            </span>
+        @endif
+
+        @if($isL1Appraiser ?? false)
+            <span class="text-muted mx-2" style="font-size:0.78rem;">|</span>
+            <small class="text-muted mr-1" style="font-size:0.78rem;">Appraisal:</small>
+            @if($h1Submitted)
+                @if($l1H1Sub && !is_null($l1H1Sub->SubmittedAt))
+                    <span class="badge badge-success" style="font-size:0.78rem;padding:4px 10px;">
+                        <i class="fa fa-check-circle mr-1"></i> H1 Appraised
+                    </span>
+                @elseif($l1H1Sub)
+                    <span class="badge badge-warning" style="font-size:0.78rem;padding:4px 10px;color:#333;">
+                        <i class="fa fa-pencil mr-1"></i> H1 Draft
+                    </span>
+                @else
+                    <span class="badge badge-secondary" style="font-size:0.78rem;padding:4px 10px;">
+                        <i class="fa fa-clock-o mr-1"></i> H1 Not Started
+                    </span>
+                @endif
+            @endif
+            @if($h2Submitted)
+                @if($l1H2Sub && !is_null($l1H2Sub->SubmittedAt))
+                    <span class="badge badge-success" style="font-size:0.78rem;padding:4px 10px;">
+                        <i class="fa fa-check-circle mr-1"></i> H2 Appraised
+                    </span>
+                @elseif($l1H2Sub)
+                    <span class="badge badge-warning" style="font-size:0.78rem;padding:4px 10px;color:#333;">
+                        <i class="fa fa-pencil mr-1"></i> H2 Draft
+                    </span>
+                @else
+                    <span class="badge badge-secondary" style="font-size:0.78rem;padding:4px 10px;">
+                        <i class="fa fa-clock-o mr-1"></i> H2 Not Started
+                    </span>
+                @endif
+            @endif
+        @endif
+    </div>
+    @endif
 
     {{-- H1 / H2 stats bar --}}
     @if($goalDetailsExists)

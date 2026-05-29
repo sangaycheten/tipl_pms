@@ -199,6 +199,10 @@ class GoalController extends Controller
                     ->value('Id');
                 if ($supervisorMaster) {
                     $data['supervisorGoalId'] = $supervisorMaster;
+                    $data['isGoalPublished']   = DB::table('pms_employeegoal')
+                        ->where('Id', $supervisorMaster)
+                        ->where('ApprovalStatus', 2)
+                        ->exists();
                 }
             }
         }
@@ -381,7 +385,7 @@ class GoalController extends Controller
         [$h1Status, $h2Status] = $this->getCycleStatuses((string)$employeeId);
 
         $request->validate([
-            'goals'                       => 'required|array|min:1',
+            'goals'                       => 'nullable|array',
             'goals.*.description'         => 'required|string|max:500',
             'goals.*.total_score'         => 'required|numeric|min:0|max:100',
             'goals.*.year'                => 'required|integer|min:2000|max:2100',
@@ -390,7 +394,9 @@ class GoalController extends Controller
             'goals.*.tasks.*.weightage'   => 'required|numeric|min:0',
         ]);
 
-        foreach ($request->goals as $gIdx => $g) {
+        $sectionGoals = $request->input('goals', []);
+
+        foreach ($sectionGoals as $gIdx => $g) {
             $sum        = collect($g['tasks'] ?? [])->sum(fn($t) => floatval($t['weightage'] ?? 0));
             $totalScore = floatval($g['total_score']);
             if (round($sum, 2) > round($totalScore, 2)) {
@@ -453,7 +459,7 @@ class GoalController extends Controller
         if ($setBy === 'supervisor' && $saveAction !== 'draft') {
             $activeCycles = $this->activeWindowCycles();
             if (!empty($activeCycles)) {
-                $cycleError = $this->validateCycleTotals($request->goals, (string)$employeeId, $activeCycles);
+                $cycleError = $this->validateCycleTotals($sectionGoals, (string)$employeeId, $activeCycles);
                 if ($cycleError) {
                     return back()->withInput()->withErrors(['goals' => $cycleError]);
                 }
@@ -462,7 +468,7 @@ class GoalController extends Controller
 
         // Individual: check per-cycle conflicts with supervisor-set goals
         if ($setBy === 'individual') {
-            $conflict = $this->checkSupervisorGoalConflict((string)$employeeId, $request->goals);
+            $conflict = $this->checkSupervisorGoalConflict((string)$employeeId, $sectionGoals);
             if ($conflict) {
                 return back()->withInput()->withErrors(['goals' => $conflict]);
             }
@@ -484,17 +490,17 @@ class GoalController extends Controller
                     "Goal submission is only allowed during the PMS window: H1 ({$h1Range}) or H2 ({$h2Range})."
                 ]);
             }
-            $cycleError = $this->validateCycleTotals($request->goals, (string)$employeeId, $this->activeWindowCycles());
+            $cycleError = $this->validateCycleTotals($sectionGoals, (string)$employeeId, $this->activeWindowCycles());
             if ($cycleError) {
                 return back()->withInput()->withErrors(['goals' => $cycleError]);
             }
         }
 
-        DB::transaction(function () use ($request, $employeeId, $departmentId, $setBy, $approvalStatus, $cgScores, $allMasterIds, $h1Status, $h2Status) {
-            // Delete section goals (GoalType=1 or legacy null), but never touch rows from a
-            // cycle whose self-rating is already submitted — those are immutable historical data.
-            $submittedYears = array_unique(array_column(array_values($request->goals), 'year'));
-            if ($allMasterIds->isNotEmpty()) {
+        DB::transaction(function () use ($sectionGoals, $saveAction, $employeeId, $departmentId, $setBy, $approvalStatus, $cgScores, $allMasterIds, $h1Status, $h2Status) {
+            // Delete and re-save section goals only when the supervisor submitted section goals.
+            // When saving common goal weightages only ($sectionGoals is empty), leave existing section goals untouched.
+            if (!empty($sectionGoals) && $allMasterIds->isNotEmpty()) {
+                $submittedYears = array_unique(array_column($sectionGoals, 'year'));
                 PMSEmployeeGoalDetail::whereIn('EmployeeGoalId', $allMasterIds)
                     ->where('Type', 2)
                     ->whereIn('Year', $submittedYears)
@@ -509,7 +515,7 @@ class GoalController extends Controller
                     ->delete();
             }
 
-            foreach ($request->goals as $gIdx => $g) {
+            foreach ($sectionGoals as $gIdx => $g) {
                 $goalNumber  = $g['goal_number'] ?? ($gIdx + 1);
                 $inH1        = isset($g['in_h1']) ? 1 : 0;
                 $inH2        = isset($g['in_h2']) ? 1 : 0;
@@ -570,9 +576,10 @@ class GoalController extends Controller
                     ->where('GoalType', 2)
                     ->first();
                 if (!$detail) continue;
-                $detail->Weightage  = floatval($cgData['weightage'] ?? 0);
-                $detail->EditedBy   = Auth::id();
-                $detail->updated_at = $now;
+                $detail->Weightage           = floatval($cgData['weightage'] ?? 0);
+                $detail->IsReadyForEmployee  = ($saveAction !== 'draft') ? 1 : 0; // only visible to employee after supervisor publishes
+                $detail->EditedBy            = Auth::id();
+                $detail->updated_at          = $now;
                 $detail->save();
                 foreach ($cgData['tasks'] ?? [] as $taskId => $taskWeight) {
                     PMSEmployeeGoalTarget::where('Id', $taskId)
@@ -583,7 +590,7 @@ class GoalController extends Controller
         });
 
         if ($setBy === 'individual' && $request->input('save_action') === 'submit') {
-            $years = array_unique(array_column(array_values($request->goals), 'year'));
+            $years = array_unique(array_column($sectionGoals, 'year'));
             $masterIds = DB::table('pms_employeegoal as eg')
                 ->join('sys_pmsnumber as pn', 'pn.Id', '=', 'eg.SysPmsNumberId')
                 ->where('eg.EmployeeId', $employeeId)
@@ -888,6 +895,11 @@ class GoalController extends Controller
                 ->whereIn('EmployeeGoalId', $allGoalIds)
                 ->where('Type', 2)
                 ->where('Year', $selectedYear)
+                ->where(function ($q) {
+                    // Common goals only visible once supervisor has set weightages
+                    $q->where('GoalType', '!=', 2)->orWhereNull('GoalType')
+                      ->orWhere('IsReadyForEmployee', 1);
+                })
                 ->orderBy('DisplayOrder')
                 ->get()
             : collect();
@@ -1143,7 +1155,7 @@ class GoalController extends Controller
 
     public function import(Request $request)
     {
-        $request->validate(['file' => 'required|file|mimes:xlsx,xls']);
+        $request->validate(['file' => 'required|file|mimes:csv,txt']);
 
         $employeeId  = $request->input('employee_id') ?: Auth::id();
         $importYear  = (int)$request->input('import_year', (int)date('Y'));
@@ -1161,51 +1173,55 @@ class GoalController extends Controller
             }
         }
 
-        $spreadsheet = IOFactory::load($request->file('file')->getPathname());
-        $rows        = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+        $handle = fopen($request->file('file')->getPathname(), 'r');
+        $rows   = [];
+        while (($row = fgetcsv($handle)) !== false) {
+            $rows[] = $row;
+        }
+        fclose($handle);
         array_shift($rows); // remove header row
 
-        $goals      = [];
-        $lastGoalNo = null;
-        $skipGoalNo = null; // goal number being skipped due to year mismatch
+        $goals     = [];
+        $goalIndex = 0;
+        $lastKey   = null;
+        $skipKey   = null;
 
         foreach ($rows as $row) {
-            $taskDesc = trim($row[6] ?? '');
+            $taskDesc = trim($row[5] ?? '');
             if ($taskDesc === '') continue;
 
-            $rawGoalNo = trim($row[0] ?? '');
-            if ($rawGoalNo !== '' && $rawGoalNo !== null) {
-                $lastGoalNo = $rawGoalNo;
-                $skipGoalNo = null; // reset skip on new goal header
+            $goalDesc = trim($row[0] ?? '');
+            if ($goalDesc !== '') {
+                $goalIndex++;
+                $lastKey = $goalIndex;
+                $skipKey = null;
 
-                // Year filtering: skip goals whose Year column doesn't match import year
-                $rowYear = trim($row[3] ?? '');
+                $rowYear = trim($row[2] ?? '');
                 if ($rowYear !== '' && (int)$rowYear !== $importYear) {
-                    $skipGoalNo = $lastGoalNo;
+                    $skipKey = $lastKey;
+                }
+
+                if ($skipKey !== $lastKey) {
+                    $h1 = strtolower(trim($row[3] ?? ''));
+                    $h2 = strtolower(trim($row[4] ?? ''));
+                    $goals[$lastKey] = [
+                        'goal_number' => $goalIndex,
+                        'description' => $goalDesc,
+                        'total_score' => (float)($row[1] ?? 0),
+                        'year'        => $rowYear !== '' ? (int)$rowYear : $importYear,
+                        'in_h1'       => in_array($h1, ['y', 'yes', '1']),
+                        'in_h2'       => in_array($h2, ['y', 'yes', '1']),
+                        'tasks'       => [],
+                    ];
                 }
             }
-            if ($lastGoalNo === null) continue;
-            if ($skipGoalNo !== null && $skipGoalNo === $lastGoalNo) continue;
 
-            if (!isset($goals[$lastGoalNo])) {
-                $h1 = strtolower(trim($row[4] ?? ''));
-                $h2 = strtolower(trim($row[5] ?? ''));
-                $rowYear = trim($row[3] ?? '');
-                $goals[$lastGoalNo] = [
-                    'goal_number' => (int)$lastGoalNo,
-                    'description' => trim($row[1] ?? ''),
-                    'total_score' => (float)($row[2] ?? 0),
-                    'year'        => $rowYear !== '' ? (int)$rowYear : $importYear,
-                    'in_h1'       => in_array($h1, ['y', 'yes', '1']),
-                    'in_h2'       => in_array($h2, ['y', 'yes', '1']),
-                    'tasks'       => [],
-                ];
-            }
+            if ($lastKey === null || $skipKey === $lastKey || !isset($goals[$lastKey])) continue;
 
-            $goals[$lastGoalNo]['tasks'][] = [
+            $goals[$lastKey]['tasks'][] = [
                 'description' => $taskDesc,
-                'weightage'   => (float)($row[7] ?? 0),
-                'target'      => trim($row[8] ?? '') ?: '-',
+                'weightage'   => (float)($row[6] ?? 0),
+                'target'      => trim($row[7] ?? '') ?: '-',
             ];
         }
 
@@ -1229,45 +1245,22 @@ class GoalController extends Controller
 
     private function downloadGoalTemplate()
     {
-        $spreadsheet = new Spreadsheet();
-        $sheet       = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Goals Template');
-
-        $headers = [
-            'Goal No', 'Goal Description', 'Total Score (Goal)', 'Year',
-            'H1 (Y/N)', 'H2 (Y/N)',
-            'Task Description', 'Task Weightage', 'Task Target',
+        $rows = [
+            ['Goal Description', 'Total Score (Goal)', 'Year', 'H1 (Y/N)', 'H2 (Y/N)', 'Task Description', 'Task Weightage', 'Task Target'],
+            ['Improve team productivity', 40, date('Y'), 'Y', 'N', 'Complete key project on time', 20, 'Q1M1'],
+            ['', '', '', '', '', 'Reduce rework by 30%', 20, 'Q1M2'],
+            ['Customer satisfaction', 60, date('Y'), 'N', 'Y', 'Achieve CSAT score >= 4.5', 60, 'Q3M1'],
         ];
-        foreach ($headers as $i => $header) {
-            $col = Coordinate::stringFromColumnIndex($i + 1);
-            $sheet->setCellValue($col . '1', $header);
-            $sheet->getStyle($col . '1')->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
-            $sheet->getStyle($col . '1')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('226b86');
-        }
 
-        $samples = [
-            [1, 'Improve team productivity', 40, date('Y'), 'Y', 'N', 'Complete key project on time', 20, 'Q1'],
-            [1, '',                           '',  '',        '',  '',  'Reduce rework by 30%',          20, 'Q2'],
-            [2, 'Customer satisfaction',      60, date('Y'), 'N', 'Y', 'Achieve CSAT score >= 4.5',     60, 'Q3'],
-        ];
-        foreach ($samples as $r => $sample) {
-            $row = $r + 2;
-            foreach ($sample as $c => $value) {
-                $sheet->setCellValue(Coordinate::stringFromColumnIndex($c + 1) . $row, $value);
-            }
-        }
+        $csv = implode("\n", array_map(function ($row) {
+            return implode(',', array_map(fn($v) => '"' . str_replace('"', '""', $v) . '"', $row));
+        }, $rows));
 
-        foreach ([8, 40, 18, 8, 8, 8, 40, 14, 14] as $i => $w) {
-            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($i + 1))->setWidth($w);
-        }
-
-        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="goal_import_template.xlsx"');
-        header('Cache-Control: max-age=0');
-        ob_end_clean();
-        $writer->save('php://output');
-        exit;
+        return response($csv, 200, [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="goal_import_template.csv"',
+            'Cache-Control'       => 'max-age=0',
+        ]);
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -1495,20 +1488,29 @@ class GoalController extends Controller
      */
     private function hasIndividualStartedRating(string $employeeId): bool
     {
+        $currentYear = (int) date('Y');
+
+        // Only consider the current year's PMS masters — past cycles are immutable history
+        // and must not prevent a supervisor from editing the current year's goals.
+        $currentYearMasterIds = DB::table('pms_employeegoal as eg')
+            ->join('sys_pmsnumber as pn', 'pn.Id', '=', 'eg.SysPmsNumberId')
+            ->where('eg.EmployeeId', $employeeId)
+            ->whereYear('pn.StartDate', $currentYear)
+            ->pluck('eg.Id');
+
+        if ($currentYearMasterIds->isEmpty()) return false;
+
+        // Blocked if employee has formally submitted any cycle this year
         $hasSubmitted = DB::table('pms_employeegoal')
-            ->where('EmployeeId', $employeeId)
+            ->whereIn('Id', $currentYearMasterIds)
             ->where(function ($q) { $q->where('H1Status', 1)->orWhere('H2Status', 1); })
             ->exists();
 
         if ($hasSubmitted) return true;
 
-        $masterIds = DB::table('pms_employeegoal')
-            ->where('EmployeeId', $employeeId)
-            ->pluck('Id');
-
-        if ($masterIds->isEmpty()) return false;
-
-        return PMSEmployeeGoalDetail::whereIn('EmployeeGoalId', $masterIds)
+        // Blocked if employee has saved a self-rating draft (any SelfScore) this year
+        return PMSEmployeeGoalDetail::whereIn('EmployeeGoalId', $currentYearMasterIds)
+            ->where('Year', $currentYear)
             ->whereNotNull('SelfScore')
             ->exists();
     }

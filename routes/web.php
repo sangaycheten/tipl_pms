@@ -241,7 +241,8 @@ Route::group(['middleware' => 'auth'], function () {
     Route::get('commongoal',                         [CommonGoalController::class, 'index'])->name('commongoal.index');
     Route::get('commongoal/create',                  [CommonGoalController::class, 'create'])->name('commongoal.create');
     Route::post('commongoal',                        [CommonGoalController::class, 'store'])->name('commongoal.store');
-    Route::get('commongoal/import-template',         [CommonGoalController::class, 'importTemplate'])->name('commongoal.import');
+    Route::get('commongoal/import-template',          [CommonGoalController::class, 'importTemplate'])->name('commongoal.import');
+    Route::post('commongoal/import-template',         [CommonGoalController::class, 'importProcess'])->name('commongoal.import.post');
     Route::get('commongoal/employees-by-dept',       [CommonGoalController::class, 'getEmployeesByDept'])->name('commongoal.employees_by_dept');
     Route::get('commongoal/{id}',                    [CommonGoalController::class, 'show'])->name('commongoal.show');
     Route::get('commongoal/{id}/edit',               [CommonGoalController::class, 'edit'])->name('commongoal.edit');

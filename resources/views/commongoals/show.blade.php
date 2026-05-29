@@ -71,19 +71,27 @@
                 <i class="fa fa-pencil"></i> Edit
             </a>
             <form method="POST" action="{{ route('commongoal.publish', $commonGoal->Id) }}"
-                  onsubmit="return confirm('{{ $publishConfirmMsg }}')"
                   style="display:inline;">
                 @csrf
-                <button type="submit" class="btn btn-{{ $commonGoal->Status === 'published' ? 'info' : 'success' }} btn-sm ml-1">
-                    <i class="fa fa-{{ $commonGoal->Status === 'published' ? 'refresh' : 'check' }}"></i>
-                    {{ $commonGoal->Status === 'published' ? 'Re-push to Employees' : 'Publish Now' }}
+                @php
+                    $isRepublish = $commonGoal->Status === 'published';
+                @endphp
+                <button type="button"
+                        class="btn btn-{{ $isRepublish ? 'info' : 'success' }} btn-sm ml-1 cg-confirm-btn"
+                        data-confirm-title="{{ $isRepublish ? 'Re-push Goals' : 'Publish Common Goals' }}"
+                        data-confirm-msg="{{ $publishConfirmMsg }}"
+                        data-confirm-type="{{ $isRepublish ? 'repush' : 'publish' }}">
+                    <i class="fa fa-{{ $isRepublish ? 'refresh' : 'check' }}"></i>
+                    {{ $isRepublish ? 'Re-push to Employees' : 'Publish Now' }}
                 </button>
             </form>
             <form method="POST" action="{{ route('commongoal.destroy', $commonGoal->Id) }}"
-                  onsubmit="return confirm('Delete this common goal set?')"
                   style="display:inline;">
                 @csrf @method('DELETE')
-                <button type="submit" class="btn btn-danger btn-sm ml-1">
+                <button type="button" class="btn btn-danger btn-sm ml-1 cg-confirm-btn"
+                        data-confirm-title="Delete Common Goal Set"
+                        data-confirm-msg="Are you sure you want to delete this common goal set? This action cannot be undone."
+                        data-confirm-type="danger">
                     <i class="fa fa-trash"></i> Delete
                 </button>
             </form>
@@ -143,15 +151,14 @@
         <div class="col-md-8">
             @forelse($goalDetails as $detail)
             @php
-                $goalNum = (int)($detail->DisplayOrder / 1000);
-                $taskNum = 0;
+                $goalNum  = (int)($detail->DisplayOrder / 1000);
+                $goalLetter = chr(64 + $goalNum);
+                $taskNum  = 0;
             @endphp
             <div class="cg-view-card">
                 <div class="cg-view-header">
-                    <strong>Goal {{ $goalNum }}: {{ $detail->Description }}</strong>
+                    <strong>Goal {{ $goalLetter }}: {{ $detail->Description }}</strong>
                     <span style="font-size:0.82rem; opacity:0.85;">
-                        Score: {{ number_format($detail->Weightage, 2) }}
-                        &nbsp;|&nbsp;
                         @if($detail->InH1 && $detail->InH2) H1 &amp; H2
                         @elseif($detail->InH1) H1
                         @elseif($detail->InH2) H2
@@ -164,7 +171,6 @@
                         <tr>
                             <th style="width:80px; text-align:center;">Task No.</th>
                             <th>Description</th>
-                            <th style="width:120px;">Weightage</th>
                             <th style="width:150px;">Target</th>
                         </tr>
                     </thead>
@@ -172,30 +178,18 @@
                         @forelse($detail->targets as $task)
                         @php $taskNum++ @endphp
                         <tr>
-                            <td class="text-center">{{ $goalNum }}.{{ $taskNum }}</td>
+                            <td class="text-center">{{ $goalLetter }}{{ $taskNum }}</td>
                             <td>{{ $task->Description }}</td>
-                            <td>{{ number_format($task->Weightage, 2) }}</td>
                             <td>{{ $task->Target !== '-' ? $task->Target : '—' }}</td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="4" class="text-center" style="padding:14px; color:rgba(255,255,255,0.6);">
+                            <td colspan="3" class="text-center" style="padding:14px; color:rgba(255,255,255,0.6);">
                                 No tasks defined.
                             </td>
                         </tr>
                         @endforelse
                     </tbody>
-                    @if($detail->targets->count())
-                    <tfoot>
-                        <tr>
-                            <td colspan="2" style="padding:7px 12px; text-align:right;">Total Weightage</td>
-                            <td style="padding:7px 12px;">
-                                {{ number_format($detail->targets->sum('Weightage'), 2) }}
-                            </td>
-                            <td></td>
-                        </tr>
-                    </tfoot>
-                    @endif
                 </table>
             </div>
             @empty
@@ -209,4 +203,43 @@
 </div>
 </div>
 </div>
+@endsection
+
+@section('pagescripts')
+<script>
+$(document).on('click', '.cg-confirm-btn', function (e) {
+    e.preventDefault();
+    var $btn  = $(this);
+    var $form = $btn.closest('form');
+    var title = $btn.data('confirm-title') || 'Confirm';
+    var msg   = $btn.data('confirm-msg')   || 'Are you sure?';
+    var type  = $btn.data('confirm-type')  || 'default';
+
+    var yesLabel, yesBtnCls, icon;
+    if (type === 'danger') {
+        yesLabel = 'Yes, Delete'; yesBtnCls = 'btn-danger'; icon = 'fa fa-trash';
+    } else if (type === 'repush') {
+        yesLabel = 'Yes, Re-push'; yesBtnCls = 'btn-info'; icon = 'fa fa-refresh';
+    } else {
+        yesLabel = 'Publish'; yesBtnCls = 'btn-success'; icon = 'fa fa-check';
+    }
+
+    $.confirm({
+        title   : title,
+        content : '<p style="margin:0; color:#fff; font-size:0.95rem;">' + msg + '</p>',
+        buttons : {
+            confirm : {
+                text     : '<i class="' + icon + '"></i> ' + yesLabel,
+                btnClass : yesBtnCls,
+                action   : function () { $form[0].submit(); }
+            },
+            cancel : {
+                text     : 'Cancel',
+                btnClass : 'btn-default',
+                action   : function () {}
+            }
+        }
+    });
+});
+</script>
 @endsection

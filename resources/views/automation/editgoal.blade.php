@@ -255,8 +255,8 @@
 <script>
 const H1_SUBMITTED = {{ $h1Status ? 'true' : 'false' }};
 const H2_SUBMITTED = {{ $h2Status ? 'true' : 'false' }};
-const H1_TARGETS = ['Q1','Q1M1','Q1M2','Q1M3','Q2','Q2M1','Q2M2','Q2M3'];
-const H2_TARGETS = ['Q3','Q3M1','Q3M2','Q3M3','Q4','Q4M1','Q4M2','Q4M3'];
+const H1_TARGETS = ['Q1M1','Q1M2','Q1M3','Q2M1','Q2M2','Q2M3'];
+const H2_TARGETS = ['Q3M1','Q3M2','Q3M3','Q4M1','Q4M2','Q4M3'];
 const ALL_TARGETS = H1_TARGETS.concat(H2_TARGETS);
 
 let goalIndex   = 0;

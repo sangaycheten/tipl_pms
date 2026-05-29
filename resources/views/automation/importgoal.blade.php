@@ -55,8 +55,12 @@
             </ol>
             <div class="mt-2" style="font-size:0.82rem;color:#666;">
                 <strong>Template columns:</strong>
-                Goal No &bull; Goal Description &bull; Total Score &bull; Year &bull; H1 (Y/N) &bull; H2 (Y/N)
+                Goal Description &bull; Total Score &bull; Year &bull; H1 (Y/N) &bull; H2 (Y/N)
                 &bull; Task Description &bull; Task Weightage &bull; Task Target
+            </div>
+            <div class="mt-1" style="font-size:0.82rem;color:#888;">
+                <i class="fa fa-info-circle"></i>
+                For goals with multiple tasks, fill Goal Description / Total Score / Year / H1 / H2 only on the <strong>first row</strong> — leave them blank for subsequent task rows of the same goal.
             </div>
         </div>
 
@@ -81,8 +85,8 @@
                 <small class="form-text text-muted">Only goals matching this year will be imported.</small>
             </div>
             <div class="form-group">
-                <label style="font-size:0.9rem;font-weight:600;">Upload completed template (.xlsx / .xls)</label>
-                <input type="file" name="file" class="form-control" accept=".xlsx,.xls" required>
+                <label style="font-size:0.9rem;font-weight:600;">Upload completed template (.csv)</label>
+                <input type="file" name="file" class="form-control" accept=".csv,.txt" required>
             </div>
             <div class="d-flex justify-content-between align-items-center mt-3">
                 <a href="javascript:history.back()" class="btn btn-secondary btn-sm">Cancel</a>

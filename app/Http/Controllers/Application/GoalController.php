@@ -178,6 +178,11 @@ class GoalController extends Controller
             $data['goalDetails'] = DB::table("pms_employeegoaldetail")
                 ->where("EmployeeGoalId", $data['goalId'])
                 ->where('Type', 2)
+                ->where(function ($q) {
+                    // Common goals (GoalType=2) only visible after supervisor sets weightages
+                    $q->where('GoalType', '!=', 2)->orWhereNull('GoalType')
+                      ->orWhere('IsReadyForEmployee', 1);
+                })
                 ->orderBy('DisplayOrder')
                 ->get(['Id', 'Description', 'DisplayOrder', 'Weightage', 'Target', 'Achievement', 'SelfScore']);
             if (empty($data['goalDetails'])) {

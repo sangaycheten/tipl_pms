@@ -389,12 +389,23 @@
                         @endif
                         @if($canSetGoals)
                             @if(!$supervisorH1Set || !$supervisorH2Set)
-                                <a href="{{ route('goals.create') }}" class="btn btn-primary btn-sm">
-                                    <i class="fa fa-plus mr-1"></i> Add New Goal
-                                </a>
-                                <a href="{{ route('goals.import') }}" class="btn btn-default btn-sm">
-                                    <i class="fa fa-upload mr-1"></i> Import Goals
-                                </a>
+                                @if(isset($goalDetails) && $goalDetails->isNotEmpty())
+                                    <a href="{{ route('goals.create') }}" class="btn btn-warning btn-sm"
+                                       title="Clear existing goals and start over">
+                                        <i class="fa fa-refresh mr-1"></i> Reset Goals
+                                    </a>
+                                    <a href="{{ route('goals.import') }}" class="btn btn-default btn-sm"
+                                       title="Replace existing goals by importing a template">
+                                        <i class="fa fa-upload mr-1"></i> Re-import Template
+                                    </a>
+                                @else
+                                    <a href="{{ route('goals.create') }}" class="btn btn-primary btn-sm">
+                                        <i class="fa fa-plus mr-1"></i> Add New Goal
+                                    </a>
+                                    <a href="{{ route('goals.import') }}" class="btn btn-default btn-sm">
+                                        <i class="fa fa-upload mr-1"></i> Import Goals
+                                    </a>
+                                @endif
                             @endif
                         @endif
                         @if($supervisorH1Set && $supervisorH2Set)

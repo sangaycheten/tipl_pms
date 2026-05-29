@@ -117,7 +117,6 @@
                         <tr>
                             <th style="width:70px; text-align:center;">Goal No.</th>
                             <th>Description</th>
-                            <th style="width:100px;">Score</th>
                             <th style="width:110px;">Period</th>
                         </tr>
                     </thead>
@@ -125,9 +124,8 @@
                         @foreach($goal->goalDetails as $detail)
                         @php $goalNum = (int)($detail->DisplayOrder / 1000); @endphp
                         <tr>
-                            <td class="text-center">{{ $goalNum }}</td>
+                            <td class="text-center">{{ chr(64 + $goalNum) }}</td>
                             <td>{{ $detail->Description }}</td>
-                            <td>{{ number_format($detail->Weightage, 2) }}</td>
                             <td>
                                 @if($detail->InH1 && $detail->InH2) H1 &amp; H2
                                 @elseif($detail->InH1) H1
@@ -152,6 +150,7 @@
                    class="btn btn-sm btn-info">
                     <i class="fa fa-eye"></i> View
                 </a>
+                @if(!$goal->isLocked)
                 <a href="{{ route('commongoal.edit', $goal->Id) }}"
                    class="btn btn-sm btn-warning">
                     <i class="fa fa-pencil"></i> Edit
@@ -159,24 +158,34 @@
                 @if($goal->Status !== 'published')
                 <form method="POST"
                       action="{{ route('commongoal.publish', $goal->Id) }}"
-                      onsubmit="return confirm('Publish these common goals to all assigned employees?')"
                       style="display:inline;">
                     @csrf
-                    <button type="submit" class="btn btn-sm btn-success">
+                    <button type="button" class="btn btn-sm btn-success cg-confirm-btn"
+                            data-confirm-title="Publish Common Goals"
+                            data-confirm-msg="Publish these common goals to all assigned employees? Their supervisors will receive them to set individual weightages."
+                            data-confirm-type="publish">
                         <i class="fa fa-check"></i> Publish
                     </button>
                 </form>
                 @endif
                 <form method="POST"
                       action="{{ route('commongoal.destroy', $goal->Id) }}"
-                      onsubmit="return confirm('Delete this common goal set?')"
                       style="display:inline;">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" class="btn btn-sm btn-danger">
+                    <button type="button" class="btn btn-sm btn-danger cg-confirm-btn"
+                            data-confirm-title="Delete Common Goal Set"
+                            data-confirm-msg="Are you sure you want to delete this common goal set? This action cannot be undone."
+                            data-confirm-type="danger">
                         <i class="fa fa-trash"></i> Delete
                     </button>
                 </form>
+                @else
+                <span class="btn btn-sm btn-default disabled" style="opacity:0.55; cursor:default;"
+                      title="Locked — one or more employees have started self-rating">
+                    <i class="fa fa-lock"></i> Locked
+                </span>
+                @endif
             </div>
         </div>
         @empty
@@ -194,4 +203,38 @@
 </div>
 </div>
 </div>
+@endsection
+
+@section('pagescripts')
+<script>
+$(document).on('click', '.cg-confirm-btn', function (e) {
+    e.preventDefault();
+    var $btn  = $(this);
+    var $form = $btn.closest('form');
+    var title = $btn.data('confirm-title') || 'Confirm';
+    var msg   = $btn.data('confirm-msg')   || 'Are you sure?';
+    var type  = $btn.data('confirm-type')  || 'default';
+
+    var yesLabel  = type === 'danger'  ? 'Yes, Delete' : 'Confirm';
+    var yesBtnCls = type === 'danger'  ? 'btn-danger'  : 'btn-success';
+    var icon      = type === 'danger'  ? 'fa fa-trash' : 'fa fa-check';
+
+    $.confirm({
+        title   : title,
+        content : '<p style="margin:0; color:#fff; font-size:0.95rem;">' + msg + '</p>',
+        buttons : {
+            confirm : {
+                text     : '<i class="' + icon + '"></i> ' + yesLabel,
+                btnClass : yesBtnCls,
+                action   : function () { $form[0].submit(); }
+            },
+            cancel : {
+                text     : 'Cancel',
+                btnClass : 'btn-default',
+                action   : function () {}
+            }
+        }
+    });
+});
+</script>
 @endsection
